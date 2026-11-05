@@ -19,7 +19,7 @@ or an mp3 if you only want the sound. No ads, no fake buttons, no sign-up.
 2. Open a terminal and run:
 
 ```sh
-npm install -g github:derthert/yoinks
+npm install -g https://github.com/derthert/yoinks/archive/refs/heads/main.tar.gz
 ```
 
 That's it. The first time you download something, yoinks fetches what it
