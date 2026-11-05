@@ -35,14 +35,24 @@ automatically.
 $ yoinks https://youtu.be/dQw4w9WgXcQ    # straight to the format picker
 $ yoinks                                 # prompts for a url
 $ yoinks --theme light                   # force the light palette
+$ yoinks <url> -q 720                    # no picker, 720p mp4 right away
+$ yoinks <url> --mp3                     # no picker, audio only
+$ yoinks <url> -q best -o D:\Videos      # save somewhere else this run
 ```
+
+`-q` takes `best`, `4k`, `1440`, `1080`, `720`, `480` or `360` and picks
+the closest height at or below it. With `-q` or `--mp3` (or when stdout
+isn't a terminal) yoinks skips the UI, prints a one-line progress and exits
+with the file path, so it works in scripts.
 
 yoinks takes over the terminal (full-screen, centered — and restores your
 scrollback on exit). Pick a format with ↑/↓ (or j/k, or number keys) and
 hit enter. `esc` goes back, `^c` quits. Or just use the mouse — the yoink
 button, the format list and the footer hints are all clickable, and
 clicking the logo takes you back home. Files are saved to `~/Downloads`,
-and the file path is printed to your terminal when you're done.
+and the file path is printed to your terminal when you're done. Press `^o`
+(or click "saving to ...") to pick another folder in your system's folder
+dialog; yoinks remembers it in `~/.config/yoinks/settings.json`.
 
 The default `auto` theme uses your terminal's own foreground and background,
 so it follows light and dark terminal themes without guessing. Press `^t` or
@@ -77,10 +87,10 @@ To try it as a global command without publishing: `npm link`, then run
 
 ## Roadmap
 
-- [ ] `--best` / `--mp3` flags to skip the picker (scriptable mode)
-- [ ] `-o <dir>` to choose the output folder
+- [x] `-q` / `--mp3` flags to skip the picker (scriptable mode)
+- [x] `-o <dir>` and `^o` to choose the output folder
 - [ ] Playlist / thread-with-multiple-videos support
-- [ ] Clipboard detection: launch bare and auto-suggest the url you copied
+- [x] Clipboard detection: launch bare and auto-suggest the url you copied
 - [ ] Self-update for the bundled yt-dlp binary (`yt-dlp -U`)
 - [x] Publish to npm (`npm i -g yoinks` / `npx yoinks`)
 - [ ] `curl yoinks.sh | sh` installer

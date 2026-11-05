@@ -276,6 +276,20 @@ function scoreVideo(f: RawFormat): number {
   return score
 }
 
+/** Choice for the --quality / --mp3 flags, no probe needed. Picks the closest height at or below. */
+export function qualityChoice(quality: number | 'best' | 'mp3'): DownloadChoice {
+  if (quality === 'mp3') return {kind: 'audio', label: 'audio only · mp3', args: mp3Audio}
+  if (quality === 'best') {
+    return {kind: 'video', label: 'best · mp4', args: mp4Video('bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b')}
+  }
+  const h = `[height<=${quality}]`
+  return {
+    kind: 'video',
+    label: `${quality}p · mp4`,
+    args: mp4Video(`bv*${h}[ext=mp4]+ba[ext=m4a]/bv*${h}+ba/b${h}/bv*+ba/b`),
+  }
+}
+
 // Download
 
 export type DownloadProgress = {

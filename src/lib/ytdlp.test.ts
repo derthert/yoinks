@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {buildChoices, expectedSha256, isExpiredLinkError} from './ytdlp.js'
+import {buildChoices, expectedSha256, isExpiredLinkError, qualityChoice} from './ytdlp.js'
 
 test('builds one mp4 choice per height plus mp3, best first', () => {
   const choices = buildChoices({
@@ -23,6 +23,14 @@ test('falls back to best available when no heights are known', () => {
   const choices = buildChoices({title: 'x', formats: []})
   assert.equal(choices[0]!.label, 'best available · mp4')
   assert.equal(choices.at(-1)!.kind, 'audio')
+})
+
+test('quality choices cap the height and always ask for mp4', () => {
+  const hd = qualityChoice(720)
+  assert.ok(hd.args.some(a => a.includes('[height<=720]')))
+  assert.ok(hd.args.includes('mp4'))
+  assert.equal(qualityChoice('mp3').kind, 'audio')
+  assert.equal(qualityChoice('best').label, 'best · mp4')
 })
 
 test('only link-expiry failures are retried', () => {

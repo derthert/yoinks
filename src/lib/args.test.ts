@@ -54,3 +54,24 @@ test('auto delegates to terminal colors while forced modes own the full surface'
   assert.equal(themeFor('dark').background, '#18181b')
   assert.equal(themeFor('dark').primary, '#ffffff')
 })
+
+test('quality flags turn on direct download', () => {
+  assert.equal(parseArgs(['https://youtu.be/x', '-q', '720']).quality, 720)
+  assert.equal(parseArgs(['https://youtu.be/x', '--quality=1080p']).quality, 1080)
+  assert.equal(parseArgs(['https://youtu.be/x', '-q', '4k']).quality, 2160)
+  assert.equal(parseArgs(['https://youtu.be/x', '-q', 'best']).quality, 'best')
+  assert.equal(parseArgs(['https://youtu.be/x', '--mp3']).quality, 'mp3')
+  assert.equal(parseArgs(['https://youtu.be/x']).quality, undefined)
+})
+
+test('rejects bad quality values and quality without a url', () => {
+  assert.match(parseArgs(['https://youtu.be/x', '-q', 'huge']).error ?? '', /--quality needs/)
+  assert.match(parseArgs(['https://youtu.be/x', '-q']).error ?? '', /--quality needs/)
+  assert.match(parseArgs(['--mp3']).error ?? '', /need a url/)
+})
+
+test('reads the output folder flag', () => {
+  assert.equal(parseArgs(['https://youtu.be/x', '-o', 'D:\Videos']).outDir, 'D:\Videos')
+  assert.equal(parseArgs(['--out=~/clips', 'https://youtu.be/x']).outDir, '~/clips')
+  assert.match(parseArgs(['https://youtu.be/x', '-o']).error ?? '', /needs a folder/)
+})

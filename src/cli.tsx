@@ -2,37 +2,40 @@ import React from 'react'
 import {createRequire} from 'node:module'
 import {render} from 'ink'
 import {App, type Outcome} from './app.js'
+import {directDownload} from './direct.js'
 import {captureFrames} from './lib/click-map.js'
 import {parseArgs} from './lib/args.js'
+import {loadOutDir, prepareOutDir} from './lib/settings.js'
 
-// read at runtime from the shipped package.json so npm version bumps
-// can't drift from a hardcoded constant
 const VERSION: string = createRequire(import.meta.url)('../package.json').version
 
 const HELP = `
-  yoinks — yoink any video. paste. yoink. done.
+  yoinks - paste a link, get the video.
 
   Usage
-    $ yoinks [url]
-
-  Examples
-    $ yoinks https://youtu.be/dQw4w9WgXcQ
-    $ yoinks https://x.com/user/status/123456
-    $ yoinks                 (prompts for a url)
+    $ yoinks                       open the app and paste a link
+    $ yoinks <url>                 pick a quality, then download
+    $ yoinks <url> -q 720          download 720p mp4 right away
+    $ yoinks <url> --mp3           download audio only
+    $ yoinks <url> -o D:\\Videos    save somewhere else this time
 
   Options
-    --theme <mode>  use auto, light, or dark for this run
-    -h, --help      show this help
-    -v, --version   show version
+    -q, --quality <q>  best, 2160 (4k), 1440, 1080, 720, 480, 360
+    --mp3              audio only, as mp3
+    -o, --out <dir>    folder to save to (this run only)
+    --theme <mode>     auto, light or dark
+    -h, --help         show this help
+    -v, --version      show version
 
-  Downloads are saved to ~/Downloads.
-  Powered by yt-dlp — YouTube, X, Instagram, Threads, TikTok & 1800+ sites.
+  Files are saved to your Downloads folder. Press ^o in the app to pick
+  another folder, yoinks remembers it.
+  Works with YouTube, Shorts, Instagram, TikTok, X and 1800+ other sites.
 `
 
 const args = parseArgs(process.argv.slice(2))
 
 if (args.error) {
-  console.error(`yoinks: ${args.error}\nTry “yoinks --help” for usage.`)
+  console.error(`yoinks: ${args.error}\nTry "yoinks --help" for usage.`)
   process.exit(1)
 }
 
@@ -46,21 +49,29 @@ if (args.version) {
   process.exit(0)
 }
 
-const initialUrl = args.initialUrl
-const initialThemeMode = args.themeMode ?? 'auto'
+let outDir: string
+try {
+  outDir = args.outDir ? prepareOutDir(args.outDir) : loadOutDir()
+} catch (error) {
+  console.error(`yoinks: ${(error as Error).message}`)
+  process.exit(1)
+}
 
-const isTTY = Boolean(process.stdout.isTTY)
+const isTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY)
+
+// a quality flag, or no terminal to draw in, means download straight away
+if (args.initialUrl && (args.quality !== undefined || !isTTY)) {
+  process.exit(await directDownload(args.initialUrl, args.quality ?? 'best', outDir))
+}
 
 const enterAltScreen = () => process.stdout.write('\x1b[?1049h\x1b[H')
-// also switch mouse tracking off — a crash can skip React effect cleanup
+// also turn mouse tracking off, a crash can skip React cleanup
 const leaveAltScreen = () => process.stdout.write('\x1b[?1006l\x1b[?1000l\x1b[?1049l')
 
 if (isTTY) {
   enterAltScreen()
   process.on('exit', leaveAltScreen)
-  // restore the terminal BEFORE a crash prints, or the stack trace is
-  // wiped along with the alternate screen and the app looks like it
-  // silently quit
+  // restore the terminal first, or the crash message is wiped with the screen
   for (const event of ['uncaughtException', 'unhandledRejection'] as const) {
     process.on(event, (error: unknown) => {
       leaveAltScreen()
@@ -73,12 +84,12 @@ if (isTTY) {
 let outcome: Outcome = {}
 const {waitUntilExit} = render(
   <App
-    initialUrl={initialUrl}
-    initialThemeMode={initialThemeMode}
+    initialUrl={args.initialUrl}
+    initialThemeMode={args.themeMode ?? 'auto'}
+    outDir={outDir}
     onOutcome={result => (outcome = result)}
   />,
-  // keep a copy of every frame so clicks can be hit-tested against it;
-  // ^c is handled by the app so a running download can clean up first
+  // the app handles ^c itself so a running download can clean up first
   {stdout: captureFrames(process.stdout), exitOnCtrlC: false},
 )
 

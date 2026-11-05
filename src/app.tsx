@@ -1,6 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react'
 import os from 'node:os'
-import path from 'node:path'
 import {Box, Text, useApp, useInput, useStdout} from 'ink'
 import SelectInput, {type IndicatorProps, type ItemProps} from 'ink-select-input'
 import Spinner from 'ink-spinner'
@@ -14,6 +13,8 @@ import {TextInput} from './components/text-input.js'
 import {clickTargetAt, findFrameRow, frameRowSpan, type ClickTarget} from './lib/click-map.js'
 import {formatBytes, formatDuration, formatEta, formatSpeed, shortenPath, truncate, wrapText} from './lib/format.js'
 import {readClipboard} from './lib/clipboard.js'
+import {pickFolder} from './lib/folder-picker.js'
+import {prepareOutDir, saveOutDir} from './lib/settings.js'
 import {addToHistory, loadHistory} from './lib/history.js'
 import {detectPlatform, isProbablyUrl, type Platform} from './lib/platforms.js'
 import {useMouseClick} from './lib/use-mouse-click.js'
@@ -31,8 +32,8 @@ import {
   type VideoInfo,
 } from './lib/ytdlp.js'
 
-const OUT_DIR = path.join(os.homedir(), 'Downloads')
 const YOINK_BUTTON = 'yoink'
+const SAVE_BUTTON = 'save'
 const DONE_LABEL = '↵ yoink another'
 const TAGLINE = 'yoink any video. paste. yoink. done.'
 
@@ -90,6 +91,7 @@ export type Outcome = {filepath?: string}
 
 type Phase =
   | {name: 'input'; warning?: string}
+  | {name: 'folder'; warning?: string}
   | {name: 'probing'; status: string}
   | {name: 'picking'}
   | {
@@ -105,6 +107,12 @@ type Phase =
 const HINTS: Record<Phase['name'], Array<[string, string]>> = {
   input: [
     ['↵', 'yoink'],
+    ['^o', 'folder'],
+    ['^c', 'quit'],
+  ],
+  folder: [
+    ['↵', 'save'],
+    ['esc', 'back'],
     ['^c', 'quit'],
   ],
   probing: [
@@ -131,6 +139,7 @@ const HINTS: Record<Phase['name'], Array<[string, string]>> = {
 type AppProps = {
   initialUrl?: string
   initialThemeMode?: ThemeMode
+  outDir: string
   onOutcome: (outcome: Outcome) => void
 }
 
@@ -149,13 +158,10 @@ export function App({initialThemeMode = 'auto', ...props}: AppProps) {
 
 function AppContent({
   initialUrl,
+  outDir: initialOutDir,
   onOutcome,
   cycleTheme,
-}: {
-  initialUrl?: string
-  onOutcome: (outcome: Outcome) => void
-  cycleTheme: () => void
-}) {
+}: Omit<AppProps, 'initialThemeMode'> & {cycleTheme: () => void}) {
   const theme = useTheme()
   const {exit} = useApp()
   const {stdout} = useStdout()
@@ -171,6 +177,9 @@ function AppContent({
   const abortRef = useRef<AbortController | undefined>(undefined)
   const downloadRef = useRef<Promise<void> | undefined>(undefined)
   const [clipboardUrl, setClipboardUrl] = useState<string>()
+  const [outDir, setOutDir] = useState(initialOutDir)
+  const [folderInput, setFolderInput] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [phase, setPhase] = useState<Phase>(initialUrl ? {name: 'probing', status: 'warming up…'} : {name: 'input'})
 
   const columns = stdout?.columns && stdout.columns > 0 ? stdout.columns : 80
@@ -243,6 +252,39 @@ function AppContent({
     void (downloadRef.current ?? Promise.resolve()).finally(() => exit())
   }, [exit])
 
+  const applyFolder = (dir: string) => {
+    setOutDir(dir)
+    saveOutDir(dir)
+  }
+
+  // the system folder dialog if there is one, otherwise a typed path
+  const changeFolder = () => {
+    if (pickerOpen) return
+    setPickerOpen(true)
+    void pickFolder(outDir).then(result => {
+      setPickerOpen(false)
+      if (result.status === 'picked') {
+        try {
+          applyFolder(prepareOutDir(result.path))
+        } catch (error) {
+          setPhase({name: 'input', warning: (error as Error).message})
+        }
+      } else if (result.status === 'unavailable') {
+        setFolderInput(outDir)
+        setPhase({name: 'folder'})
+      }
+    })
+  }
+
+  const handleFolderSubmit = (value: string) => {
+    try {
+      applyFolder(prepareOutDir(value))
+      setPhase({name: 'input'})
+    } catch (error) {
+      setPhase({name: 'folder', warning: (error as Error).message})
+    }
+  }
+
   useInput(
     (input, key) => {
       if (key.ctrl && input === 'c') {
@@ -253,6 +295,11 @@ function AppContent({
         cycleTheme()
         return
       }
+      if (key.ctrl && input === 'o' && phase.name === 'input') {
+        changeFolder()
+        return
+      }
+      if (key.escape && phase.name === 'folder') setPhase({name: 'input'})
       if (key.escape && (phase.name === 'picking' || phase.name === 'error' || phase.name === 'done')) resetToInput()
       if (key.escape && (phase.name === 'probing' || phase.name === 'downloading')) cancelRun()
       if (key.return && (phase.name === 'error' || phase.name === 'done')) resetToInput()
@@ -289,10 +336,9 @@ function AppContent({
       }
       try {
         const ffmpegLocation = await findFfmpeg()
-        const base = {ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir: OUT_DIR}
+        const base = {ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir}
         let filepath: string
         try {
-          // reuse the probe's metadata — starts immediately instead of re-extracting
           filepath = await download({...base, infoJsonPath: infoJsonRef.current}, handlers, controller.signal)
         } catch (error) {
           if (controller.signal.aborted || !isExpiredLinkError(error)) throw error
@@ -325,18 +371,28 @@ function AppContent({
   const hintAction = (key: string): (() => void) | undefined => {
     if (key === '^c') return quit
     if (key === '^t') return cycleTheme
+    if (key === '^o') return changeFolder
+    if (key === 'esc' && phase.name === 'folder') return () => setPhase({name: 'input'})
     if (key === 'esc') return phase.name === 'probing' || phase.name === 'downloading' ? cancelRun : resetToInput
     if (key === '↵') {
       if (phase.name === 'input') return () => handleUrlSubmit(urlInput)
+      if (phase.name === 'folder') return () => handleFolderSubmit(folderInput)
       if (phase.name === 'picking') return () => handlePick({value: highlightRef.current})
       if (phase.name === 'error' || phase.name === 'done') return resetToInput
     }
     return undefined // ↑↓ / ↑ stay keyboard-only
   }
+  const savingLine = pickerOpen
+    ? 'choose a folder in the window that opened…'
+    : `saving to ${shortenPath(outDir, os.homedir(), boxWidth - 12)}`
   const clickTargets: ClickTarget[] = []
   if (phase.name === 'input') {
     // the frame button rows above/below the label are part of the button
     clickTargets.push({match: `  ${YOINK_BUTTON}  `, padY: 1, action: () => handleUrlSubmit(urlInput)})
+    clickTargets.push({match: savingLine, action: changeFolder})
+  }
+  if (phase.name === 'folder') {
+    clickTargets.push({match: `  ${SAVE_BUTTON}  `, padY: 1, action: () => handleFolderSubmit(folderInput)})
   }
   if (phase.name === 'picking') {
     for (const [index, choice] of choices.entries()) {
@@ -395,10 +451,28 @@ function AppContent({
           {phase.warning ? (
             <Text color={theme.gray} dimColor={theme.dimSecondary}>✗ {phase.warning}</Text>
           ) : clipboardOffered ? (
-            <Text color={theme.gray} dimColor={theme.dimSecondary}>link in your clipboard — ⇥ to paste it</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>link in your clipboard, ⇥ to paste it</Text>
           ) : clipboardAccepted ? (
-            <Text color={theme.gray} dimColor={theme.dimSecondary}>from your clipboard — ↵ to yoink it</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>from your clipboard, ↵ to yoink it</Text>
           ) : null}
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>{savingLine}</Text>
+        </Box>
+      )}
+
+      {phase.name === 'folder' && (
+        <Box flexDirection="column" alignItems="center">
+          <FramedInput title="Save files to" width={boxWidth} button={SAVE_BUTTON}>
+            <TextInput
+              value={folderInput}
+              onChange={setFolderInput}
+              onSubmit={handleFolderSubmit}
+              placeholder={os.homedir()}
+              width={boxWidth - 6}
+            />
+          </FramedInput>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>
+            {phase.warning ? `✗ ${phase.warning}` : 'type a folder path, it will be created if needed'}
+          </Text>
         </Box>
       )}
 
