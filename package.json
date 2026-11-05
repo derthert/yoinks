@@ -1,7 +1,7 @@
 {
   "name": "yoinks",
   "version": "0.3.1",
-  "description": "yoink any video from YouTube, X, Instagram, Threads & 1800+ sites — right from your terminal. paste. yoink. done.",
+  "description": "Paste a link from YouTube, Shorts, Instagram, TikTok or X and get the video as mp4, right in your terminal.",
   "type": "module",
   "bin": {
     "yoinks": "dist/cli.js"
@@ -10,7 +10,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsup",
@@ -18,20 +18,22 @@
     "test": "tsx --test src/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli.js",
-    "prepublishOnly": "npm test && npm run typecheck && npm run build"
+    "prepublishOnly": "npm test && npm run typecheck && npm run build",
+    "prepare": "npm run build"
   },
   "author": "Pablo Stanley",
   "keywords": [
     "video",
     "downloader",
+    "mp4",
     "yt-dlp",
     "youtube",
+    "shorts",
     "instagram",
+    "tiktok",
     "twitter",
-    "threads",
-    "cli",
-    "tui",
-    "ink"
+    "x",
+    "cli"
   ],
   "license": "MIT",
   "dependencies": {
@@ -50,10 +52,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pablostanley/yoinks.git"
+    "url": "git+https://github.com/derthert/yoinks.git"
   },
-  "homepage": "https://github.com/pablostanley/yoinks#readme",
+  "homepage": "https://github.com/derthert/yoinks#readme",
   "bugs": {
-    "url": "https://github.com/pablostanley/yoinks/issues"
+    "url": "https://github.com/derthert/yoinks/issues"
   }
 }

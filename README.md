@@ -5,91 +5,81 @@
   <img src="assets/logo-light.svg" alt="yoinks" width="288">
 </picture>
 
-yoink any video. paste. yoink. done.
+Paste a link, get the video.
 
-Download videos from YouTube, X/Twitter, Instagram, Threads, TikTok and
-1,800+ other sites — right from your terminal. Paste a url, pick a
-resolution (or audio-only mp3), done. No popups, no fake download buttons,
-no sketchy redirects.
+Works with YouTube, YouTube Shorts, Instagram posts and reels, TikTok, X
+(Twitter) and 1,800+ other sites. You get an mp4 in the quality you pick,
+or an mp3 if you only want the sound. No ads, no fake buttons, no sign-up.
 
-<img src="assets/home.png" alt="yoinks home screen — paste a link and hit yoink" width="100%">
+<img src="assets/home.png" alt="yoinks home screen" width="100%">
 
 ## Install
 
-```sh
-npm install -g yoinks
-```
-
-Or try it without installing anything:
+1. Install [Node.js](https://nodejs.org) 22 or newer.
+2. Open a terminal and run:
 
 ```sh
-npx yoinks
+npm install -g github:derthert/yoinks
 ```
 
-Requires Node 18+. Everything else (yt-dlp, ffmpeg) is fetched or bundled
-automatically.
+That's it. The first time you download something, yoinks fetches what it
+needs by itself (nothing else to install).
 
-## Usage
+## Use
+
+Open the app and paste a link:
 
 ```sh
-$ yoinks https://youtu.be/dQw4w9WgXcQ    # straight to the format picker
-$ yoinks                                 # prompts for a url
-$ yoinks --theme light                   # force the light palette
+yoinks
 ```
 
-yoinks takes over the terminal (full-screen, centered — and restores your
-scrollback on exit). Pick a format with ↑/↓ (or j/k, or number keys) and
-hit enter. `esc` goes back, `^c` quits. Or just use the mouse — the yoink
-button, the format list and the footer hints are all clickable, and
-clicking the logo takes you back home. Files are saved to `~/Downloads`,
-and the file path is printed to your terminal when you're done.
+Or give the link directly and pick a quality from the list:
 
-The default `auto` theme uses your terminal's own foreground and background,
-so it follows light and dark terminal themes without guessing. Press `^t` or
-click the theme control in the footer to cycle through `auto`, `light`, and
-`dark` for the current session. Use `--theme auto`, `--theme light`, or
-`--theme dark` to choose the starting theme for one launch.
+```sh
+yoinks https://youtube.com/shorts/abc123
+```
 
-<img src="assets/download-options.png" alt="yoinks format picker — resolutions with estimated file sizes, plus audio-only mp3" width="100%">
+Or skip the list and get the file right away:
 
-## How it works
+```sh
+yoinks https://www.instagram.com/reel/abc123 -q 1080
+yoinks https://x.com/user/status/123 -q best
+yoinks https://www.tiktok.com/@user/video/123 --mp3
+```
 
-- Powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp). On first run,
-  yoinks downloads the standalone yt-dlp binary to `~/.yoinks/bin` —
-  no Python required. If you already have yt-dlp installed, it uses yours.
-- ffmpeg (needed for merging high-res streams and mp3 extraction) is found
-  on your PATH, with `ffmpeg-static` as a bundled fallback.
-- The UI is [Ink](https://github.com/vadimdemedes/ink) — React for the
-  terminal.
+`-q` takes `best`, `4k`, `1440`, `1080`, `720`, `480` or `360`. If the video
+isn't available in that quality, you get the closest one below it.
 
-## Development
+Files go to your **Downloads** folder.
+
+<img src="assets/download-options.png" alt="quality picker" width="100%">
+
+### In the app
+
+- `↑` `↓` to choose, `enter` to download
+- `esc` to go back or cancel
+- `ctrl+c` to quit
+- `ctrl+t` to switch between light and dark
+- You can also click everything with the mouse.
+- If you copied a link, press `tab` to paste it.
+
+## Good to know
+
+- yoinks uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) under the hood.
+  If you already have it, yoinks uses yours. If not, it downloads it once
+  into `~/.yoinks/bin` and checks that the file is genuine.
+- Private posts and age-restricted videos may not work.
+- Only download what you have the right to keep, and respect creators.
+
+## For developers
 
 ```sh
 npm install
-npm run build        # bundle to dist/ with tsup
-npm run dev          # rebuild on change
+npm run build
 node dist/cli.js <url>
+npm test
 npm run typecheck
 ```
-
-To try it as a global command without publishing: `npm link`, then run
-`yoinks` anywhere.
-
-## Roadmap
-
-- [ ] `--best` / `--mp3` flags to skip the picker (scriptable mode)
-- [ ] `-o <dir>` to choose the output folder
-- [ ] Playlist / thread-with-multiple-videos support
-- [ ] Clipboard detection: launch bare and auto-suggest the url you copied
-- [ ] Self-update for the bundled yt-dlp binary (`yt-dlp -U`)
-- [x] Publish to npm (`npm i -g yoinks` / `npx yoinks`)
-- [ ] `curl yoinks.sh | sh` installer
-
-## A note on fair use
-
-yoinks is a personal-archiving tool. Downloading content may violate a
-platform's terms of service — only download what you have the right to
-keep, and be excellent to creators.
 
 ## License
 
