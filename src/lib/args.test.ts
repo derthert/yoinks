@@ -69,3 +69,9 @@ test('rejects bad quality values and quality without a url', () => {
   assert.match(parseArgs(['https://youtu.be/x', '-q']).error ?? '', /--quality needs/)
   assert.match(parseArgs(['--mp3']).error ?? '', /need a url/)
 })
+
+test('reads the output folder flag', () => {
+  assert.equal(parseArgs(['https://youtu.be/x', '-o', 'D:\Videos']).outDir, 'D:\Videos')
+  assert.equal(parseArgs(['--out=~/clips', 'https://youtu.be/x']).outDir, '~/clips')
+  assert.match(parseArgs(['https://youtu.be/x', '-o']).error ?? '', /needs a folder/)
+})

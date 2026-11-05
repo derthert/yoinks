@@ -50,7 +50,17 @@ yoinks https://www.tiktok.com/@user/video/123 --mp3
 `-q` takes `best`, `4k`, `1440`, `1080`, `720`, `480` or `360`. If the video
 isn't available in that quality, you get the closest one below it.
 
-Files go to your **Downloads** folder.
+### Where files go
+
+Files go to your **Downloads** folder by default. To change it, press
+`ctrl+o` in the app (or click "saving to ...") and pick a folder. yoinks
+remembers your choice.
+
+To save somewhere else just once, add `-o`:
+
+```sh
+yoinks https://youtu.be/abc123 -q 720 -o D:\Videos
+```
 
 <img src="assets/download-options.png" alt="quality picker" width="100%">
 
@@ -59,6 +69,7 @@ Files go to your **Downloads** folder.
 - `↑` `↓` to choose, `enter` to download
 - `esc` to go back or cancel
 - `ctrl+c` to quit
+- `ctrl+o` to choose the download folder
 - `ctrl+t` to switch between light and dark
 - You can also click everything with the mouse.
 - If you copied a link, press `tab` to paste it.

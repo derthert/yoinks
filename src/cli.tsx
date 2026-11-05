@@ -1,15 +1,13 @@
 import React from 'react'
 import {createRequire} from 'node:module'
-import os from 'node:os'
-import path from 'node:path'
 import {render} from 'ink'
 import {App, type Outcome} from './app.js'
 import {directDownload} from './direct.js'
 import {captureFrames} from './lib/click-map.js'
 import {parseArgs} from './lib/args.js'
+import {loadOutDir, prepareOutDir} from './lib/settings.js'
 
 const VERSION: string = createRequire(import.meta.url)('../package.json').version
-const OUT_DIR = path.join(os.homedir(), 'Downloads')
 
 const HELP = `
   yoinks - paste a link, get the video.
@@ -19,15 +17,18 @@ const HELP = `
     $ yoinks <url>                 pick a quality, then download
     $ yoinks <url> -q 720          download 720p mp4 right away
     $ yoinks <url> --mp3           download audio only
+    $ yoinks <url> -o D:\\Videos    save somewhere else this time
 
   Options
     -q, --quality <q>  best, 2160 (4k), 1440, 1080, 720, 480, 360
     --mp3              audio only, as mp3
+    -o, --out <dir>    folder to save to (this run only)
     --theme <mode>     auto, light or dark
     -h, --help         show this help
     -v, --version      show version
 
-  Files are saved to your Downloads folder.
+  Files are saved to your Downloads folder. Press ^o in the app to pick
+  another folder, yoinks remembers it.
   Works with YouTube, Shorts, Instagram, TikTok, X and 1800+ other sites.
 `
 
@@ -48,11 +49,19 @@ if (args.version) {
   process.exit(0)
 }
 
+let outDir: string
+try {
+  outDir = args.outDir ? prepareOutDir(args.outDir) : loadOutDir()
+} catch (error) {
+  console.error(`yoinks: ${(error as Error).message}`)
+  process.exit(1)
+}
+
 const isTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY)
 
 // a quality flag, or no terminal to draw in, means download straight away
 if (args.initialUrl && (args.quality !== undefined || !isTTY)) {
-  process.exit(await directDownload(args.initialUrl, args.quality ?? 'best', OUT_DIR))
+  process.exit(await directDownload(args.initialUrl, args.quality ?? 'best', outDir))
 }
 
 const enterAltScreen = () => process.stdout.write('\x1b[?1049h\x1b[H')
@@ -77,7 +86,7 @@ const {waitUntilExit} = render(
   <App
     initialUrl={args.initialUrl}
     initialThemeMode={args.themeMode ?? 'auto'}
-    outDir={OUT_DIR}
+    outDir={outDir}
     onOutcome={result => (outcome = result)}
   />,
   // the app handles ^c itself so a running download can clean up first

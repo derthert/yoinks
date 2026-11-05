@@ -104,7 +104,7 @@ process.on('exit', () => {
 })
 
 function runYtDlp(cmd: string, args: string[], signal?: AbortSignal) {
-  const child = spawn(cmd, args, {
+  const child = spawn(cmd, ['--encoding', 'utf-8', ...args], {
     env: YTDLP_ENV,
     // own process group on unix so a cancel also stops ffmpeg
     detached: process.platform !== 'win32',

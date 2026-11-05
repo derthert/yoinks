@@ -2,13 +2,11 @@
 
 // src/cli.tsx
 import { createRequire } from "module";
-import os4 from "os";
-import path3 from "path";
 import { render } from "ink";
 
 // src/app.tsx
 import { useCallback, useEffect as useEffect4, useRef as useRef3, useState as useState4 } from "react";
-import os3 from "os";
+import os4 from "os";
 import { Box as Box5, Text as Text7, useApp, useInput as useInput2, useStdout as useStdout3 } from "ink";
 import SelectInput from "ink-select-input";
 import Spinner from "ink-spinner";
@@ -612,15 +610,102 @@ async function readClipboard() {
   return "";
 }
 
-// src/lib/history.ts
+// src/lib/folder-picker.ts
+import { execFile as execFile2 } from "child_process";
+var WINDOWS_SCRIPT = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Windows.Forms
+$owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true}
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = 'Where should yoinks save your files?'
+$dialog.SelectedPath = $env:YOINKS_START_DIR
+if ($dialog.ShowDialog($owner) -eq 'OK') { Write-Output $dialog.SelectedPath }
+`;
+function pickers(startDir) {
+  if (process.platform === "win32") {
+    return [["powershell", ["-NoProfile", "-NonInteractive", "-STA", "-Command", WINDOWS_SCRIPT]]];
+  }
+  if (process.platform === "darwin") {
+    const script = `POSIX path of (choose folder with prompt "Where should yoinks save your files?" default location POSIX file ${JSON.stringify(startDir)})`;
+    return [["osascript", ["-e", script]]];
+  }
+  return [
+    ["zenity", ["--file-selection", "--directory", `--filename=${startDir}/`]],
+    ["kdialog", ["--getexistingdirectory", startDir]]
+  ];
+}
+function run2([command, args2], startDir) {
+  return new Promise((resolve) => {
+    execFile2(
+      command,
+      args2,
+      { encoding: "utf8", windowsHide: true, env: { ...process.env, YOINKS_START_DIR: startDir } },
+      (error, stdout) => {
+        const picked = stdout.trim().replace(/\/$/, "");
+        if (error && error.code === "ENOENT") resolve({ status: "unavailable" });
+        else if (picked) resolve({ status: "picked", path: picked });
+        else resolve({ status: "cancelled" });
+      }
+    );
+  });
+}
+async function pickFolder(startDir) {
+  for (const picker of pickers(startDir)) {
+    const result = await run2(picker, startDir);
+    if (result.status !== "unavailable") return result;
+  }
+  return { status: "unavailable" };
+}
+
+// src/lib/settings.ts
 import fs from "fs";
 import os from "os";
 import path from "path";
-var HISTORY_FILE = path.join(os.homedir(), ".config", "yoinks", "history.json");
+var SETTINGS_FILE = path.join(os.homedir(), ".config", "yoinks", "settings.json");
+var DEFAULT_OUT_DIR = path.join(os.homedir(), "Downloads");
+function load() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function loadOutDir() {
+  const saved = load().outDir;
+  return typeof saved === "string" && saved ? saved : DEFAULT_OUT_DIR;
+}
+function saveOutDir(dir) {
+  try {
+    fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
+    fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify({ ...load(), outDir: dir }, null, 2)}
+`);
+  } catch {
+  }
+}
+function prepareOutDir(input) {
+  const trimmed = input.trim().replace(/^["']|["']$/g, "");
+  if (!trimmed) throw new Error("type a folder path");
+  const expanded = trimmed === "~" || /^~[\\/]/.test(trimmed) ? path.join(os.homedir(), trimmed.slice(1)) : trimmed;
+  const dir = path.resolve(expanded);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    throw new Error(`can't use ${dir}`);
+  }
+  if (!fs.statSync(dir).isDirectory()) throw new Error(`${dir} is not a folder`);
+  return dir;
+}
+
+// src/lib/history.ts
+import fs2 from "fs";
+import os2 from "os";
+import path2 from "path";
+var HISTORY_FILE = path2.join(os2.homedir(), ".config", "yoinks", "history.json");
 var LIMIT = 50;
 function loadHistory() {
   try {
-    const parsed = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
+    const parsed = JSON.parse(fs2.readFileSync(HISTORY_FILE, "utf8"));
     return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string") : [];
   } catch {
     return [];
@@ -629,8 +714,8 @@ function loadHistory() {
 function addToHistory(url) {
   const next = [url, ...loadHistory().filter((entry) => entry !== url)].slice(0, LIMIT);
   try {
-    fs.mkdirSync(path.dirname(HISTORY_FILE), { recursive: true });
-    fs.writeFileSync(HISTORY_FILE, `${JSON.stringify(next, null, 2)}
+    fs2.mkdirSync(path2.dirname(HISTORY_FILE), { recursive: true });
+    fs2.writeFileSync(HISTORY_FILE, `${JSON.stringify(next, null, 2)}
 `);
   } catch {
   }
@@ -676,10 +761,10 @@ function isProbablyUrl(input) {
 import { spawn, spawnSync } from "child_process";
 import { createHash } from "crypto";
 import { rmSync } from "fs";
-import fs2 from "fs/promises";
-import os2 from "os";
-import path2 from "path";
-var YOINKS_DIR = path2.join(os2.homedir(), ".yoinks", "bin");
+import fs3 from "fs/promises";
+import os3 from "os";
+import path3 from "path";
+var YOINKS_DIR = path3.join(os3.homedir(), ".yoinks", "bin");
 var RELEASE_BASE = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
 var YTDLP_ENV = { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
 function ytDlpAssetName() {
@@ -702,10 +787,10 @@ function commandWorks(cmd, args2) {
 }
 async function ensureYtDlp(onStatus, signal) {
   if (await commandWorks("yt-dlp", ["--version"])) return "yt-dlp";
-  const local = path2.join(YOINKS_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
+  const local = path3.join(YOINKS_DIR, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
   if (await commandWorks(local, ["--version"])) return local;
   onStatus("first run: fetching yt-dlp\u2026");
-  await fs2.mkdir(YOINKS_DIR, { recursive: true });
+  await fs3.mkdir(YOINKS_DIR, { recursive: true });
   const asset = ytDlpAssetName();
   const tmp = `${local}.download`;
   try {
@@ -719,10 +804,10 @@ async function ensureYtDlp(onStatus, signal) {
     if (!expected || expected !== actual) {
       throw new Error("Downloaded yt-dlp failed its checksum. Try again later.");
     }
-    await fs2.writeFile(tmp, data, { mode: 493 });
-    await fs2.rename(tmp, local);
+    await fs3.writeFile(tmp, data, { mode: 493 });
+    await fs3.rename(tmp, local);
   } finally {
-    await fs2.rm(tmp, { force: true });
+    await fs3.rm(tmp, { force: true });
   }
   return local;
 }
@@ -756,7 +841,7 @@ process.on("exit", () => {
   for (const file of tempFiles) rmSync(file, { force: true });
 });
 function runYtDlp(cmd, args2, signal) {
-  const child = spawn(cmd, args2, {
+  const child = spawn(cmd, ["--encoding", "utf-8", ...args2], {
     env: YTDLP_ENV,
     // own process group on unix so a cancel also stops ffmpeg
     detached: process.platform !== "win32"
@@ -805,7 +890,7 @@ var tempFiles = /* @__PURE__ */ new Set();
 function removeInfoJson(file) {
   if (!file) return;
   tempFiles.delete(file);
-  void fs2.rm(file, { force: true });
+  void fs3.rm(file, { force: true });
 }
 async function probe(ytdlp, url, signal) {
   const stdout = await new Promise((resolve, reject) => {
@@ -827,9 +912,9 @@ async function probe(ytdlp, url, signal) {
   } catch {
     throw new Error("Could not parse video info from yt-dlp.");
   }
-  const infoJsonPath = path2.join(os2.tmpdir(), `yoinks-info-${process.pid}-${Date.now()}.json`);
+  const infoJsonPath = path3.join(os3.tmpdir(), `yoinks-info-${process.pid}-${Date.now()}.json`);
   tempFiles.add(infoJsonPath);
-  await fs2.writeFile(infoJsonPath, stdout);
+  await fs3.writeFile(infoJsonPath, stdout);
   return { info, infoJsonPath };
 }
 var MAX_VIDEO_CHOICES = 8;
@@ -898,7 +983,7 @@ function download(opts, handlers, signal) {
     "after_move:filepath",
     "--no-simulate",
     "-o",
-    path2.join(opts.outDir, "%(title).60s.%(ext)s")
+    path3.join(opts.outDir, "%(title).60s.%(ext)s")
   ];
   if (opts.ffmpegLocation) args2.push("--ffmpeg-location", opts.ffmpegLocation);
   return new Promise((resolve, reject) => {
@@ -940,7 +1025,7 @@ function download(opts, handlers, signal) {
           handlers.onProcessing();
         } else if (line.startsWith("[download] Destination: ")) {
           destinations.push(line.slice("[download] Destination: ".length));
-        } else if (path2.isAbsolute(line)) {
+        } else if (path3.isAbsolute(line)) {
           filepath = line;
         }
       }
@@ -966,7 +1051,7 @@ function isExpiredLinkError(error) {
 }
 function removePartials(destinations) {
   return Promise.allSettled(
-    destinations.flatMap((dest) => [dest, `${dest}.part`, `${dest}.ytdl`]).map((file) => fs2.rm(file, { force: true, maxRetries: 5, retryDelay: 200 }))
+    destinations.flatMap((dest) => [dest, `${dest}.part`, `${dest}.ytdl`]).map((file) => fs3.rm(file, { force: true, maxRetries: 5, retryDelay: 200 }))
   );
 }
 function toNumber(value) {
@@ -983,6 +1068,7 @@ function cleanYtDlpError(stderr) {
 // src/app.tsx
 import { Fragment as Fragment2, jsx as jsx8, jsxs as jsxs6 } from "react/jsx-runtime";
 var YOINK_BUTTON = "yoink";
+var SAVE_BUTTON = "save";
 var DONE_LABEL = "\u21B5 yoink another";
 var TAGLINE = "yoink any video. paste. yoink. done.";
 var choiceLabel = (choice) => `${choice.kind === "audio" ? "\u266A " : "\u25B6 "}${choice.label}`;
@@ -1011,6 +1097,12 @@ function indeterminateMeta(progress) {
 var HINTS = {
   input: [
     ["\u21B5", "yoink"],
+    ["^o", "folder"],
+    ["^c", "quit"]
+  ],
+  folder: [
+    ["\u21B5", "save"],
+    ["esc", "back"],
     ["^c", "quit"]
   ],
   probing: [
@@ -1042,7 +1134,7 @@ function App({ initialThemeMode = "auto", ...props }) {
 }
 function AppContent({
   initialUrl,
-  outDir,
+  outDir: initialOutDir,
   onOutcome,
   cycleTheme
 }) {
@@ -1061,6 +1153,9 @@ function AppContent({
   const abortRef = useRef3(void 0);
   const downloadRef = useRef3(void 0);
   const [clipboardUrl, setClipboardUrl] = useState4();
+  const [outDir2, setOutDir] = useState4(initialOutDir);
+  const [folderInput, setFolderInput] = useState4("");
+  const [pickerOpen, setPickerOpen] = useState4(false);
   const [phase, setPhase] = useState4(initialUrl ? { name: "probing", status: "warming up\u2026" } : { name: "input" });
   const columns = stdout?.columns && stdout.columns > 0 ? stdout.columns : 80;
   const boxWidth = Math.max(14, Math.min(64, columns - 6));
@@ -1120,6 +1215,35 @@ function AppContent({
     abortRef.current?.abort();
     void (downloadRef.current ?? Promise.resolve()).finally(() => exit());
   }, [exit]);
+  const applyFolder = (dir) => {
+    setOutDir(dir);
+    saveOutDir(dir);
+  };
+  const changeFolder = () => {
+    if (pickerOpen) return;
+    setPickerOpen(true);
+    void pickFolder(outDir2).then((result) => {
+      setPickerOpen(false);
+      if (result.status === "picked") {
+        try {
+          applyFolder(prepareOutDir(result.path));
+        } catch (error) {
+          setPhase({ name: "input", warning: error.message });
+        }
+      } else if (result.status === "unavailable") {
+        setFolderInput(outDir2);
+        setPhase({ name: "folder" });
+      }
+    });
+  };
+  const handleFolderSubmit = (value) => {
+    try {
+      applyFolder(prepareOutDir(value));
+      setPhase({ name: "input" });
+    } catch (error) {
+      setPhase({ name: "folder", warning: error.message });
+    }
+  };
   useInput2(
     (input, key) => {
       if (key.ctrl && input === "c") {
@@ -1130,6 +1254,11 @@ function AppContent({
         cycleTheme();
         return;
       }
+      if (key.ctrl && input === "o" && phase.name === "input") {
+        changeFolder();
+        return;
+      }
+      if (key.escape && phase.name === "folder") setPhase({ name: "input" });
       if (key.escape && (phase.name === "picking" || phase.name === "error" || phase.name === "done")) resetToInput();
       if (key.escape && (phase.name === "probing" || phase.name === "downloading")) cancelRun();
       if (key.return && (phase.name === "error" || phase.name === "done")) resetToInput();
@@ -1160,7 +1289,7 @@ function AppContent({
       };
       try {
         const ffmpegLocation = await findFfmpeg();
-        const base = { ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir };
+        const base = { ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir: outDir2 };
         let filepath;
         try {
           filepath = await download({ ...base, infoJsonPath: infoJsonRef.current }, handlers, controller.signal);
@@ -1189,17 +1318,25 @@ function AppContent({
   const hintAction = (key) => {
     if (key === "^c") return quit;
     if (key === "^t") return cycleTheme;
+    if (key === "^o") return changeFolder;
+    if (key === "esc" && phase.name === "folder") return () => setPhase({ name: "input" });
     if (key === "esc") return phase.name === "probing" || phase.name === "downloading" ? cancelRun : resetToInput;
     if (key === "\u21B5") {
       if (phase.name === "input") return () => handleUrlSubmit(urlInput);
+      if (phase.name === "folder") return () => handleFolderSubmit(folderInput);
       if (phase.name === "picking") return () => handlePick({ value: highlightRef.current });
       if (phase.name === "error" || phase.name === "done") return resetToInput;
     }
     return void 0;
   };
+  const savingLine = pickerOpen ? "choose a folder in the window that opened\u2026" : `saving to ${shortenPath(outDir2, os4.homedir(), boxWidth - 12)}`;
   const clickTargets = [];
   if (phase.name === "input") {
     clickTargets.push({ match: `  ${YOINK_BUTTON}  `, padY: 1, action: () => handleUrlSubmit(urlInput) });
+    clickTargets.push({ match: savingLine, action: changeFolder });
+  }
+  if (phase.name === "folder") {
+    clickTargets.push({ match: `  ${SAVE_BUTTON}  `, padY: 1, action: () => handleFolderSubmit(folderInput) });
   }
   if (phase.name === "picking") {
     for (const [index, choice] of choices.entries()) {
@@ -1253,7 +1390,21 @@ function AppContent({
       phase.warning ? /* @__PURE__ */ jsxs6(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: [
         "\u2717 ",
         phase.warning
-      ] }) : clipboardOffered ? /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: "link in your clipboard \u2014 \u21E5 to paste it" }) : clipboardAccepted ? /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: "from your clipboard \u2014 \u21B5 to yoink it" }) : null
+      ] }) : clipboardOffered ? /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: "link in your clipboard, \u21E5 to paste it" }) : clipboardAccepted ? /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: "from your clipboard, \u21B5 to yoink it" }) : null,
+      /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: savingLine })
+    ] }),
+    phase.name === "folder" && /* @__PURE__ */ jsxs6(Box5, { flexDirection: "column", alignItems: "center", children: [
+      /* @__PURE__ */ jsx8(FramedInput, { title: "Save files to", width: boxWidth, button: SAVE_BUTTON, children: /* @__PURE__ */ jsx8(
+        TextInput,
+        {
+          value: folderInput,
+          onChange: setFolderInput,
+          onSubmit: handleFolderSubmit,
+          placeholder: os4.homedir(),
+          width: boxWidth - 6
+        }
+      ) }),
+      /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: phase.warning ? `\u2717 ${phase.warning}` : "type a folder path, it will be created if needed" })
     ] }),
     phase.name === "probing" && /* @__PURE__ */ jsx8(Box5, { flexDirection: "column", alignItems: "center", children: /* @__PURE__ */ jsx8(FramedInput, { title: platform ? platform.label : "Paste a link", width: boxWidth, button: YOINK_BUTTON, buttonDim: true, children: /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: url.length > boxWidth - 8 ? `${url.slice(0, boxWidth - 9)}\u2026` : url }) }) }),
     phase.name === "picking" && platform && /* @__PURE__ */ jsxs6(Box5, { width: contentWidth, children: [
@@ -1320,7 +1471,7 @@ function AppContent({
         /* @__PURE__ */ jsx8(Text7, { bold: true, color: theme.primary, children: "\u2713 yoinked! " }),
         /* @__PURE__ */ jsx8(Text7, { color: theme.primary, children: "find your file in:" })
       ] }),
-      /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: shortenPath(phase.filepath, os3.homedir(), 60) }),
+      /* @__PURE__ */ jsx8(Text7, { color: theme.gray, dimColor: theme.dimSecondary, children: shortenPath(phase.filepath, os4.homedir(), 60) }),
       /* @__PURE__ */ jsx8(Gap, {}),
       /* @__PURE__ */ jsx8(
         Box5,
@@ -1358,7 +1509,7 @@ function AppContent({
 }
 
 // src/direct.ts
-async function directDownload(url, quality, outDir) {
+async function directDownload(url, quality, outDir2) {
   if (!isProbablyUrl(url)) {
     console.error("yoinks: that does not look like a link, paste a full url");
     return 1;
@@ -1375,7 +1526,7 @@ async function directDownload(url, quality, outDir) {
     const ytdlp = await ensureYtDlp((message) => status(message), controller.signal);
     status(`yoinking ${choice.label}\u2026`);
     const filepath = await download(
-      { ytdlp, ffmpegLocation: await findFfmpeg(), url, choice, outDir },
+      { ytdlp, ffmpegLocation: await findFfmpeg(), url, choice, outDir: outDir2 },
       {
         onProgress: (progress) => status(progressLine(progress)),
         onProcessing: () => status("processing\u2026")
@@ -1439,6 +1590,11 @@ function parseArgs(args2) {
     else if (arg === "-q" || arg === "--quality") error = setQuality(args2[++index]);
     else if (arg.startsWith("--quality=")) error = setQuality(arg.slice("--quality=".length));
     else if (arg === "--mp3") result.quality = "mp3";
+    else if (arg === "-o" || arg === "--out") {
+      const value = args2[++index];
+      if (value) result.outDir = value;
+      else error = "--out needs a folder";
+    } else if (arg.startsWith("--out=")) result.outDir = arg.slice("--out=".length);
     else if (arg.startsWith("-")) error = `unknown option "${arg}"`;
     else positional.push(arg);
     if (error) return { ...result, error };
@@ -1454,7 +1610,6 @@ function parseArgs(args2) {
 // src/cli.tsx
 import { jsx as jsx9 } from "react/jsx-runtime";
 var VERSION = createRequire(import.meta.url)("../package.json").version;
-var OUT_DIR = path3.join(os4.homedir(), "Downloads");
 var HELP = `
   yoinks - paste a link, get the video.
 
@@ -1463,15 +1618,18 @@ var HELP = `
     $ yoinks <url>                 pick a quality, then download
     $ yoinks <url> -q 720          download 720p mp4 right away
     $ yoinks <url> --mp3           download audio only
+    $ yoinks <url> -o D:\\Videos    save somewhere else this time
 
   Options
     -q, --quality <q>  best, 2160 (4k), 1440, 1080, 720, 480, 360
     --mp3              audio only, as mp3
+    -o, --out <dir>    folder to save to (this run only)
     --theme <mode>     auto, light or dark
     -h, --help         show this help
     -v, --version      show version
 
-  Files are saved to your Downloads folder.
+  Files are saved to your Downloads folder. Press ^o in the app to pick
+  another folder, yoinks remembers it.
   Works with YouTube, Shorts, Instagram, TikTok, X and 1800+ other sites.
 `;
 var args = parseArgs(process.argv.slice(2));
@@ -1488,9 +1646,16 @@ if (args.version) {
   console.log(VERSION);
   process.exit(0);
 }
+var outDir;
+try {
+  outDir = args.outDir ? prepareOutDir(args.outDir) : loadOutDir();
+} catch (error) {
+  console.error(`yoinks: ${error.message}`);
+  process.exit(1);
+}
 var isTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY);
 if (args.initialUrl && (args.quality !== void 0 || !isTTY)) {
-  process.exit(await directDownload(args.initialUrl, args.quality ?? "best", OUT_DIR));
+  process.exit(await directDownload(args.initialUrl, args.quality ?? "best", outDir));
 }
 var enterAltScreen = () => process.stdout.write("\x1B[?1049h\x1B[H");
 var leaveAltScreen = () => process.stdout.write("\x1B[?1006l\x1B[?1000l\x1B[?1049l");
@@ -1512,7 +1677,7 @@ var { waitUntilExit } = render(
     {
       initialUrl: args.initialUrl,
       initialThemeMode: args.themeMode ?? "auto",
-      outDir: OUT_DIR,
+      outDir,
       onOutcome: (result) => outcome = result
     }
   ),

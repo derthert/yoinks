@@ -9,6 +9,8 @@ export type CliArgs = {
   themeMode?: ThemeMode
   /** Set by --quality or --mp3: download straight away, no picker. */
   quality?: Quality
+  /** -o: save to this folder for this run */
+  outDir?: string
   error?: string
 }
 
@@ -48,6 +50,11 @@ export function parseArgs(args: string[]): CliArgs {
     else if (arg === '-q' || arg === '--quality') error = setQuality(args[++index])
     else if (arg.startsWith('--quality=')) error = setQuality(arg.slice('--quality='.length))
     else if (arg === '--mp3') result.quality = 'mp3'
+    else if (arg === '-o' || arg === '--out') {
+      const value = args[++index]
+      if (value) result.outDir = value
+      else error = '--out needs a folder'
+    } else if (arg.startsWith('--out=')) result.outDir = arg.slice('--out='.length)
     else if (arg.startsWith('-')) error = `unknown option "${arg}"`
     else positional.push(arg)
     if (error) return {...result, error}
